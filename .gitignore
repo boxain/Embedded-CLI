@@ -1,0 +1,46 @@
+# CMake build artifacts
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+_deps/
+
+# Compiler/Linker outputs
+*.o
+*.obj
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+*.su
+*.d
+*.a
+*.lib
+
+# Debug files
+*.dSYM/
+*.dwarf
+
+# JetBrains IDEs (CLion, IntelliJ IDEA)
+.idea/
+cmake-build-*/
+
+# Visual Studio Code
+.vscode/
+
+# Eclipse
+.cproject
+.project
+.settings/
+
+# Backup files
+*.bak
+*~
+
+# OS artifacts
+.DS_Store
+Thumbs.db
