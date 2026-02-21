@@ -1,7 +1,7 @@
 #ifndef MCU_SHELL_APP_UART_H
 #define MCU_SHELL_APP_UART_H
 
-#include "lib_uart.h"
+#include <stdint.h>
 
 typedef enum {
     CMD_TYPE_GPIO,
@@ -15,11 +15,11 @@ typedef enum {
     ACT_TYPE_LED_RED,
     ACT_TYPE_LED_GREEN,
     ACT_TYPE_LED_BLUE,
-    ACT_TYPE_LED_SERVO,
-    ACT_TYPE_LED_BUZZER,
-    ACT_TYPE_LED_AHT20,
-    ACT_TYPE_LED_POT,
-    ACT_TYPE_LED_NTC,
+    ACT_TYPE_SERVO,
+    ACT_TYPE_BUZZER,
+    ACT_TYPE_AHT20,
+    ACT_TYPE_POT,
+    ACT_TYPE_NTC,
 } action_t;
 
 typedef struct {
@@ -38,6 +38,7 @@ typedef struct {
 } executed_command_t;
 
 void app_uart_init();
+void app_uart_transmit(uint8_t* data, uint8_t len);
 void app_uart_process_task();
 void app_uart_cmd_execute_task();
 

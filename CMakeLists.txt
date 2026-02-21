@@ -38,7 +38,17 @@ add_executable(${CMAKE_PROJECT_NAME}
         Lib/src/lib_uart.c
         Lib/inc/lib_uart.h
         Lib/src/lib_gpio.c
-        Lib/inc/lib_gpio.h)
+        Lib/inc/lib_gpio.h
+        Lib/src/lib_aht20.c
+        Lib/inc/lib_aht20.h
+        Lib/src/lib_sg90.c
+        Lib/inc/lib_sg90.h
+        Lib/src/lib_buzzer.c
+        Lib/inc/lib_buzzer.h
+        Lib/src/lib_pot.c
+        Lib/inc/lib_pot.h
+        App/src/app_cmd_handler.c
+        App/inc/app_cmd_handler.h)
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
@@ -72,4 +82,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
 
     # Add user defined libraries
+)
+
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
+        -u_printf_float
 )

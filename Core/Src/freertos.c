@@ -46,6 +46,7 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
 osMessageQueueId_t CmdQueueHandle;
+osSemaphoreId_t UartSemaphoreHandle;
 /* USER CODE END Variables */
 /* Definitions for UartTask */
 osThreadId_t UartTaskHandle;
@@ -58,7 +59,7 @@ const osThreadAttr_t UartTask_attributes = {
 osThreadId_t CmdTaskHandle;
 const osThreadAttr_t CmdTask_attributes = {
   .name = "CmdTask",
-  .stack_size = 128 * 4,
+  .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityLow7,
 };
 
@@ -67,6 +68,7 @@ const osThreadAttr_t CmdTask_attributes = {
 osThreadId_t GetUartTaskHandleID(void);
 osThreadId_t GetCmdTaskHandleID(void);
 osMessageQueueId_t GetCmdQueueHandleID(void);
+osSemaphoreId_t GetUartSemaphoreHandleID(void);
 /* USER CODE END FunctionPrototypes */
 
 void StartDefaultTask(void *argument);
@@ -90,6 +92,7 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
+  UartSemaphoreHandle = osSemaphoreNew(1, 1, NULL);
   /* USER CODE END RTOS_SEMAPHORES */
 
   /* USER CODE BEGIN RTOS_TIMERS */
@@ -165,6 +168,10 @@ osThreadId_t GetCmdTaskHandleID(void) {
 
 osMessageQueueId_t GetCmdQueueHandleID(void) {
   return CmdQueueHandle;
+}
+
+osSemaphoreId_t GetUartSemaphoreHandleID(void) {
+  return UartSemaphoreHandle;
 }
 /* USER CODE END Application */
 

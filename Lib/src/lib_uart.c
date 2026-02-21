@@ -10,7 +10,6 @@ typedef struct {
 
 static uart_buffer_t uart_buffer;
 
-
 void lib_uart_init() {
     uart_buffer.write_index = 0;
     uart_buffer.read_index = 0;
