@@ -7,8 +7,10 @@
 #include "lib_pot.h"
 #include "lib_aht20.h"
 
-#define UART_READ_BUFFER_SIZE   6
-#define UART_PACKET_NOTIFY_FLAG 0x01
+#define UART_PACKET_HEADER_LEN    2
+#define UART_PACKET_CHECKSUM_LEN  1
+#define UART_READ_BUFFER_SIZE     48
+#define UART_PACKET_NOTIFY_FLAG   0x01
 
 static uint8_t uart_read_buffer[UART_READ_BUFFER_SIZE];
 static uart_packet_t uart_packet = {0};
@@ -18,7 +20,7 @@ static uint8_t uart_packet_len = sizeof(uart_packet_t);
 osThreadId_t GetUartTaskHandleID(void);
 osMessageQueueId_t GetCmdQueueHandleID(void);
 osSemaphoreId_t GetUartSemaphoreHandleID(void);
-static int8_t _uart_packet_parse(command_t* cmd, action_t* act, uint8_t* value);
+static void _uart_packet_send(uint8_t* data, uint8_t offset);
 
 // ================ STM32 CallBack Function ================
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
@@ -32,6 +34,18 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     }
 }
 
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
+    if (huart == &huart2) {
+        int8_t res = lib_uart_write(uart_read_buffer, Size);
+        if (res != -1) {
+            osThreadId_t tid = GetUartTaskHandleID();
+            osThreadFlagsSet(tid, UART_PACKET_NOTIFY_FLAG);
+        }
+        HAL_UARTEx_ReceiveToIdle_DMA(&huart2, uart_read_buffer, UART_READ_BUFFER_SIZE); // consider moving it to lib
+        __HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT);
+    }
+}
+
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
     if (huart == &huart2) {
         osSemaphoreId_t sid = GetUartSemaphoreHandleID();
@@ -42,7 +56,9 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 // ================ Public Function ================
 void app_uart_init() {
     lib_uart_init();
-    HAL_UART_Receive_DMA(&huart2, uart_read_buffer, UART_READ_BUFFER_SIZE);  // consider moving it to lib
+    HAL_UARTEx_ReceiveToIdle_DMA(&huart2, uart_read_buffer, UART_READ_BUFFER_SIZE);
+    __HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT);
+    // HAL_UART_Receive_DMA(&huart2, uart_read_buffer, UART_READ_BUFFER_SIZE);  // consider moving it to lib
 }
 
 void app_uart_transmit(uint8_t* data, uint8_t len) {
@@ -52,21 +68,35 @@ void app_uart_transmit(uint8_t* data, uint8_t len) {
 }
 
 void app_uart_process_task() {
-    osMessageQueueId_t cmd_queue_id = GetCmdQueueHandleID();
+    uint8_t read_buffer[UART_READ_BUFFER_SIZE];
     while (1) {
         osThreadFlagsWait(UART_PACKET_NOTIFY_FLAG, osFlagsWaitAny, osWaitForever);
-        int8_t ret = lib_uart_read((uint8_t*)&uart_packet, uart_packet_len);
-        executed_command_t executed_cmd = {0};
-        if (ret != -1) {
-            // ========== 1. Parsed packet format ==========
-            ret = _uart_packet_parse(&executed_cmd.cmd_type, &executed_cmd.act_type, &executed_cmd.value);
-            if (ret == -1) continue;
+        while (1) {
+            // =========== Header ( 0xAA ) Check ===========
+            int8_t ret = lib_uart_peak(read_buffer, 1);
+            if (ret == -1) break;
+            if (read_buffer[0] != 0xAA) {
+                lib_uart_read_index_update(1);
+                continue;
+            }
 
-            // ========== 2. Add to queue for later processing ==========
-            osMessageQueuePut(cmd_queue_id, (void*)&executed_cmd, 0, osWaitForever);
-            // osSemaphoreId_t sid = GetUartSemaphoreHandleID();
-            // osSemaphoreAcquire(sid, osWaitForever);
-            // HAL_UART_Transmit_DMA(&huart2, uart_read_buffer, UART_READ_BUFFER_SIZE);
+            // =========== Packet Length Check ===========
+            ret = lib_uart_peak(read_buffer, 2);
+            if (ret == -1) break;
+
+            // =========== Calculate Checksum ===========
+            ret = lib_uart_peak(read_buffer, 2+read_buffer[1]+1);  // header + len + payload + checksum
+            if (ret == -1) break;
+            uint8_t checksum = 0;
+            for (uint8_t i = 0; i < read_buffer[1]+2; i++) {
+                checksum += read_buffer[i];
+            }
+            if (checksum != read_buffer[2+read_buffer[1]]) {
+                lib_uart_read_index_update(1);
+            }else {
+                lib_uart_read_index_update(2+read_buffer[1]+1);
+                _uart_packet_send(read_buffer, 2); // skip header
+            }
         }
         osDelay(50);
     }
@@ -83,16 +113,16 @@ void app_uart_cmd_execute_task() {
 
 
 // ================ Private Function ================
-static int8_t _uart_packet_parse(command_t* cmd, action_t* act, uint8_t* value) {
-    if (uart_packet.header != 0xAA || uart_packet.length != uart_packet_len-3) {
-        return -1;
-    }
+static void _uart_packet_send(uint8_t* data, uint8_t offset) {
+    executed_command_t executed_cmd = {0};
+    executed_cmd.cmd_type = data[offset];
+    executed_cmd.act_type = data[offset+1];
+    executed_cmd.value = data[offset+2];
 
-    uint8_t checksum = uart_packet.header + uart_packet.length + uart_packet.cmd_type + uart_packet.action_type + uart_packet.value;
-    if (checksum != uart_packet.checksum) return -1;
+    osMessageQueueId_t cmd_queue_id = GetCmdQueueHandleID();
+    osMessageQueuePut(cmd_queue_id, (void*)&executed_cmd, 0, osWaitForever);
 
-    *cmd = uart_packet.cmd_type;
-    *act = uart_packet.action_type;
-    *value = uart_packet.value;
-    return 0;
+    osSemaphoreId_t sid = GetUartSemaphoreHandleID();
+    osSemaphoreAcquire(sid, osWaitForever);
+    HAL_UART_Transmit_DMA(&huart2, uart_read_buffer, UART_READ_BUFFER_SIZE);
 }
